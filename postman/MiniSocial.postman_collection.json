@@ -1,0 +1,386 @@
+{
+  "info": {
+    "_postman_id": "a7e3f1c0-5b2d-4e8a-9c6f-minisocial2026",
+    "name": "MiniSocial - MongoDB Sharded + Neo4j",
+    "description": "Bộ test API mạng xã hội mini.\n\nCách dùng:\n1. Sửa biến `base_url` thành http://<PC4_IP>:8000\n2. Chạy 'Auth > Đăng nhập (admin)' và 'Auth > Đăng nhập (user000)' trước — token/id tự lưu vào biến collection.\n3. Chạy 'Posts > Tạo bài viết' để tự lưu `post_id`.\n4. Các request Admin tự gắn header X-User-Id = admin_id.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8000" },
+    { "key": "admin_id", "value": "" },
+    { "key": "user_id", "value": "" },
+    { "key": "user2_id", "value": "" },
+    { "key": "post_id", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Auth",
+      "item": [
+        {
+          "name": "Đăng ký user mới (dual-write Mongo + Neo4j)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/users", "host": ["{{base_url}}"], "path": ["users"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"testuser01\",\n  \"password\": \"123456\",\n  \"full_name\": \"Nguyễn Test\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Tạo user thành công', () => pm.response.to.have.status(200));",
+                  "pm.test('Có trạng thái sync (synced hoặc pending_outbox)', () => {",
+                  "  pm.expect(pm.response.json().sync).to.be.oneOf(['synced', 'pending_outbox']);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Đăng ký - nhất quán mạnh (strong=true, rollback nếu Neo4j chết)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/users?strong=true",
+              "host": ["{{base_url}}"], "path": ["users"],
+              "query": [{ "key": "strong", "value": "true" }]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"testuser02\",\n  \"password\": \"123456\",\n  \"full_name\": \"Trần Strong\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Đăng nhập (admin)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/users/login", "host": ["{{base_url}}"], "path": ["users", "login"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"admin123\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Đăng nhập admin OK', () => pm.response.to.have.status(200));",
+                  "const u = pm.response.json();",
+                  "pm.collectionVariables.set('admin_id', u._id);",
+                  "pm.test('Role là admin', () => pm.expect(u.role).to.eql('admin'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Đăng nhập (user000)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/users/login", "host": ["{{base_url}}"], "path": ["users", "login"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"user000\",\n  \"password\": \"123456\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Đăng nhập user OK', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('user_id', pm.response.json()._id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Đăng nhập (user001 - để test kết bạn)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/users/login", "host": ["{{base_url}}"], "path": ["users", "login"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"user001\",\n  \"password\": \"123456\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('user2_id', pm.response.json()._id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Đăng nhập sai mật khẩu (mong đợi 401)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/users/login", "host": ["{{base_url}}"], "path": ["users", "login"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"user000\",\n  \"password\": \"saimatkhau\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": { "exec": ["pm.test('Trả về 401', () => pm.response.to.have.status(401));"] }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Users",
+      "item": [
+        {
+          "name": "Danh sách users",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/users?limit=50",
+              "host": ["{{base_url}}"], "path": ["users"],
+              "query": [{ "key": "limit", "value": "50" }]
+            }
+          }
+        },
+        {
+          "name": "Chi tiết 1 user",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/users/{{user_id}}", "host": ["{{base_url}}"], "path": ["users", "{{user_id}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Posts & Comments (MongoDB sharded)",
+      "item": [
+        {
+          "name": "Tạo bài viết (ghi vào shard theo hash author_id)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/posts", "host": ["{{base_url}}"], "path": ["posts"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"author_id\": \"{{user_id}}\",\n  \"content\": \"Bài viết test từ Postman - demo sharded cluster\",\n  \"image_urls\": [\"https://picsum.photos/400\"]\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Tạo post OK', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('post_id', pm.response.json()._id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Bài viết theo tác giả (TARGETED - 1 shard)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/posts/by-author/{{user_id}}?limit=20",
+              "host": ["{{base_url}}"], "path": ["posts", "by-author", "{{user_id}}"],
+              "query": [{ "key": "limit", "value": "20" }]
+            },
+            "description": "Có shard key author_id → mongos định tuyến đúng 1 shard"
+          }
+        },
+        {
+          "name": "Tìm kiếm nội dung (SCATTER-GATHER - mọi shard)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/posts/search?q=Postman&limit=20",
+              "host": ["{{base_url}}"], "path": ["posts", "search"],
+              "query": [{ "key": "q", "value": "Postman" }, { "key": "limit", "value": "20" }]
+            },
+            "description": "Không có shard key → mongos quét cả 2 shard rồi merge"
+          }
+        },
+        {
+          "name": "Thích bài viết",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/posts/{{post_id}}/like", "host": ["{{base_url}}"], "path": ["posts", "{{post_id}}", "like"] }
+          }
+        },
+        {
+          "name": "Tạo bình luận",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/posts/comments", "host": ["{{base_url}}"], "path": ["posts", "comments"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"post_id\": \"{{post_id}}\",\n  \"author_id\": \"{{user2_id}}\",\n  \"content\": \"Bình luận test từ Postman\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Danh sách bình luận của bài viết",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/posts/{{post_id}}/comments", "host": ["{{base_url}}"], "path": ["posts", "{{post_id}}", "comments"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Social (Neo4j + liên mô hình)",
+      "item": [
+        {
+          "name": "Kết bạn (ghi Neo4j + cache friend_count vào Mongo)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/social/friends", "host": ["{{base_url}}"], "path": ["social", "friends"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_user\": \"{{user_id}}\",\n  \"to_user\": \"{{user2_id}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Danh sách bạn bè (Neo4j)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/social/friends/{{user_id}}", "host": ["{{base_url}}"], "path": ["social", "friends", "{{user_id}}"] }
+          }
+        },
+        {
+          "name": "News Feed (LIÊN MÔ HÌNH: Neo4j bạn bè → MongoDB posts)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/social/feed/{{user_id}}?limit=20",
+              "host": ["{{base_url}}"], "path": ["social", "feed", "{{user_id}}"],
+              "query": [{ "key": "limit", "value": "20" }]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Feed trả về OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Có cờ degraded (false khi Neo4j sống)', () => {",
+                  "  pm.expect(pm.response.json()).to.have.property('degraded');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Gợi ý kết bạn (friend-of-friend + hồ sơ Mongo)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/social/suggestions/{{user_id}}?limit=10",
+              "host": ["{{base_url}}"], "path": ["social", "suggestions", "{{user_id}}"],
+              "query": [{ "key": "limit", "value": "10" }]
+            }
+          }
+        },
+        {
+          "name": "Phát hiện cộng đồng",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/social/communities", "host": ["{{base_url}}"], "path": ["social", "communities"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Admin (yêu cầu role=admin)",
+      "item": [
+        {
+          "name": "Trạng thái các nút (health)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-User-Id", "value": "{{admin_id}}" }],
+            "url": { "raw": "{{base_url}}/admin/health", "host": ["{{base_url}}"], "path": ["admin", "health"] }
+          }
+        },
+        {
+          "name": "Phân bố dữ liệu trên các shard",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-User-Id", "value": "{{admin_id}}" }],
+            "url": { "raw": "{{base_url}}/admin/shard-distribution", "host": ["{{base_url}}"], "path": ["admin", "shard-distribution"] }
+          }
+        },
+        {
+          "name": "Benchmark truy vấn (targeted vs scatter-gather)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-User-Id", "value": "{{admin_id}}" }],
+            "url": {
+              "raw": "{{base_url}}/admin/benchmark?runs=20",
+              "host": ["{{base_url}}"], "path": ["admin", "benchmark"],
+              "query": [{ "key": "runs", "value": "20" }]
+            }
+          }
+        },
+        {
+          "name": "Xử lý outbox thủ công (retry đồng bộ Neo4j)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-User-Id", "value": "{{admin_id}}" }],
+            "url": { "raw": "{{base_url}}/admin/outbox/process", "host": ["{{base_url}}"], "path": ["admin", "outbox", "process"] }
+          }
+        },
+        {
+          "name": "Gọi admin bằng user thường (mong đợi 403)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-User-Id", "value": "{{user_id}}" }],
+            "url": { "raw": "{{base_url}}/admin/health", "host": ["{{base_url}}"], "path": ["admin", "health"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": { "exec": ["pm.test('Bị chặn 403', () => pm.response.to.have.status(403));"] }
+            }
+          ]
+        },
+        {
+          "name": "Gọi admin không có header (mong đợi 401)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/admin/health", "host": ["{{base_url}}"], "path": ["admin", "health"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": { "exec": ["pm.test('Bị chặn 401', () => pm.response.to.have.status(401));"] }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
