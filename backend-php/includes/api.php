@@ -13,7 +13,7 @@ function api(string $method, string $path, ?array $body = null): array
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_CUSTOMREQUEST  => $method,
-        CURLOPT_TIMEOUT        => 10,
+        CURLOPT_TIMEOUT        => 20, // bầu lại primary mất ~15s, lâu hơn thì báo lỗi nhầm dù đã ghi
         CURLOPT_HTTPHEADER     => $headers,
     ]);
     if ($body !== null) {

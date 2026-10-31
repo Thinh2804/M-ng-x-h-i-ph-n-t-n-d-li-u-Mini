@@ -14,6 +14,8 @@ def add_friend(body: FriendRequest):
         raise HTTPException(400, "Không thể tự kết bạn")
     try:
         return sync.create_friendship_dual(body.from_user, body.to_user)
+    except LookupError as e:
+        raise HTTPException(404, str(e))
     except (Neo4jError, ServiceUnavailable, OSError) as e:
         raise HTTPException(503, f"Neo4j (PC4) không khả dụng: {e}")
 

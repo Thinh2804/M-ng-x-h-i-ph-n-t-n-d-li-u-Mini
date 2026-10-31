@@ -29,6 +29,21 @@ def main():
     print(f"Seed {N_USERS} users x {POSTS_PER_USER} posts...")
     now = datetime.now(timezone.utc)
 
+    if dbx.db.users.find_one({"username": "user000"}):
+        sys.exit("Đã có dữ liệu mẫu (user000) - bỏ qua để không tạo trùng.")
+
+    # Schema: index MongoDB + ràng buộc Neo4j (chạy lại nhiều lần không sao)
+    # users shard theo _id nên MongoDB không cho index unique trên username;
+    # tính duy nhất được kiểm tra ở API đăng ký (routers/users.py)
+    dbx.db.users.create_index("username")
+    dbx.db.posts.create_index([("author_id", 1), ("created_at", -1)])
+    dbx.db.comments.create_index([("post_id", 1), ("created_at", 1)])
+    dbx.db.outbox.create_index("status")
+    with dbx.neo4j_driver.session() as s:
+        s.run("CREATE CONSTRAINT user_id_unique IF NOT EXISTS "
+              "FOR (u:User) REQUIRE u.id IS UNIQUE")
+    print("  ✔ index MongoDB + constraint Neo4j")
+
     # 0. Tài khoản quản trị (role=admin) - dùng cho dashboard và API /admin
     if not dbx.db.users.find_one({"username": "admin"}):
         admin_id = str(uuid.uuid4())

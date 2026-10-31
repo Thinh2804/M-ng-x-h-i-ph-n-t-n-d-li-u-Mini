@@ -42,6 +42,7 @@
     <a href="index.php?page=profile">Hồ sơ</a>
     <?php if (($me['role'] ?? '') === 'admin'): ?>
       <a href="index.php?page=admin">⚙️ Giám sát</a>
+      <a href="index.php?page=sync">🔄 Đồng bộ</a>
     <?php endif; ?>
     <span class="spacer"></span>
     <span>👤 <?= e($me['username']) ?><?= ($me['role'] ?? '') === 'admin' ? ' (admin)' : '' ?></span>

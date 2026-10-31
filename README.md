@@ -14,11 +14,11 @@ Hệ thống CSDL đa mô hình phân tán trên **4 máy cá nhân** (mỗi má
 | Máy | Dịch vụ chính | Cổng | Thư mục |
 |-----|---------------|------|---------|
 | **PC1** | Config Server (cfgrs) | 27019 | [deploy/pc1-configsvr](deploy/pc1-configsvr) |
-| **PC2** | Shard 1 (rs1 primary) + secondary rs2* | 27018, 27029 | [deploy/pc2-shard1](deploy/pc2-shard1) |
-| **PC3** | Shard 2 (rs2 primary) + secondary rs1* | 27018, 27028 | [deploy/pc3-shard2](deploy/pc3-shard2) |
-| **PC4 (Master)** | mongos + Python API + PHP Web + Neo4j | 27017, 8000, 8080, 7687 | [deploy/pc4-master](deploy/pc4-master) |
+| **PC2** | Shard 1 (rs1 primary) + secondary rs2* + config server | 27018, 27029, 27019 | [deploy/pc2-shard1](deploy/pc2-shard1) |
+| **PC3** | Shard 2 (rs2 primary) + secondary rs1* + config server | 27018, 27028, 27019 | [deploy/pc3-shard2](deploy/pc3-shard2) |
+| **PC4 (Master)** | mongos + Python API + PHP Web + Neo4j + bản sao thứ 3 của rs1, rs2* | 27017, 8000, 8080, 7687, 27038, 27039 | [deploy/pc4-master](deploy/pc4-master) |
 
-\* Secondary chéo máy để minh họa cơ chế sao chép (replication) – yêu cầu của báo cáo thực nghiệm.
+\* Mỗi shard và `cfgrs` có 3 thành viên trên 3 máy khác nhau, nên mất 1 máy vẫn còn đa số để đọc, ghi và bầu primary. Bản sao trên PC4 có priority 0 (không làm primary).
 
 ```
                  ┌─────────────── PC4 (MASTER) ────────────────┐
@@ -26,6 +26,7 @@ Hệ thống CSDL đa mô hình phân tán trên **4 máy cá nhân** (mỗi má
                  │        │               │                    │
                  │        ▼               ▼                    │
                  │  mongos :27017    Neo4j :7687 (Desktop)     │
+                 │  rs1-sec :27038   rs2-sec :27039            │
                  └───────┬──────────────────────────────────── ┘
                          │ configdb
             ┌────────────┼─────────────────┐
@@ -33,7 +34,35 @@ Hệ thống CSDL đa mô hình phân tán trên **4 máy cá nhân** (mỗi má
           PC1          PC2               PC3
      Config :27019  Shard1 :27018    Shard2 :27018
                     rs2-sec :27029   rs1-sec :27028
+                    Config :27019    Config :27019
 ```
+
+## Chạy thử trên 1 máy (giả lập 4 máy)
+
+Mỗi PC là một địa chỉ loopback riêng (PC1=`127.0.1.1` … PC4=`127.0.1.4`), cổng giữ nguyên như bảng trên; dữ liệu nằm ở `.local-4pc\`. Service MongoDB của Windows không bị ảnh hưởng.
+
+```powershell
+# Chỉ chạy lần đầu: cài thư viện, tải Neo4j Community, nạp dữ liệu
+python -m venv backend-python\.venv
+backend-python\.venv\Scripts\python.exe -m pip install -r backend-python\requirements.txt
+powershell -ExecutionPolicy Bypass -File deploy\local-4pc\setup_neo4j.ps1
+
+# Mỗi lần chạy
+powershell -ExecutionPolicy Bypass -File deploy\local-4pc\cluster.ps1 start
+powershell -ExecutionPolicy Bypass -File deploy\start_local.ps1
+
+# Chỉ chạy lần đầu, sau khi cụm đã lên
+$env:PYTHONIOENCODING="utf-8"; backend-python\.venv\Scripts\python.exe scripts\seed_data.py 30 20
+
+# Đối chiếu MongoDB - Neo4j / xem trạng thái / tắt 1 nút / thí nghiệm mất nút tự động / dừng cụm
+backend-python\.venv\Scripts\python.exe scripts\check_sync.py
+powershell -ExecutionPolicy Bypass -File deploy\local-4pc\cluster.ps1 status
+powershell -ExecutionPolicy Bypass -File deploy\local-4pc\cluster.ps1 stop-node pc3-rs1sec
+backend-python\.venv\Scripts\python.exe benchmark\fault_test.py
+powershell -ExecutionPolicy Bypass -File deploy\local-4pc\cluster.ps1 stop
+```
+
+Web: `http://localhost:8080` — tài khoản mẫu `user000` / `123456`, quản trị `admin` / `admin123`. Neo4j Browser: `http://127.0.1.4:7474`.
 
 ## Phần mềm cần cài đặt
 
@@ -54,7 +83,7 @@ Hệ thống CSDL đa mô hình phân tán trên **4 máy cá nhân** (mỗi má
 ### Giai đoạn 1 – Cấu hình mạng (tất cả các máy)
 - Kết nối cùng mạng LAN, đặt IP tĩnh (hoặc hostname ổn định).
 - Copy `.env.example` → `.env`, điền IP thật của 4 máy.
-- Mở firewall **chỉ trong mạng nội bộ** các cổng: `27017-27019, 27028, 27029, 7474, 7687, 8000, 8080`. Không mở MongoDB ra Internet.
+- Mở firewall **chỉ trong mạng nội bộ** các cổng: `27017-27019, 27028, 27029, 27038, 27039, 7474, 7687, 8000, 8080`. Không mở MongoDB ra Internet.
 - Kiểm tra liên lạc: `ping <IP máy khác>`.
 
 ### Giai đoạn 2 – Khởi động dịch vụ MongoDB trên từng máy
@@ -65,6 +94,8 @@ Hệ thống CSDL đa mô hình phân tán trên **4 máy cá nhân** (mỗi má
 .\deploy\pc2-shard1\start_shard1.ps1
 # PC3
 .\deploy\pc3-shard2\start_shard2.ps1
+# PC4
+.\deploy\pc4-master\start_replicas.ps1
 ```
 
 ### Giai đoạn 3 – Khởi tạo replica sets (chạy trên PC4, cần mongosh)
@@ -106,4 +137,4 @@ Dùng số liệu từ benchmark + ảnh chụp dashboard giám sát (`http://<P
 1. **Truy vấn/giao dịch trên nhiều nút**: mongos định tuyến targeted (có shard key) hoặc scatter-gather; ghi `w=majority`.
 2. **Kết hợp 2 mô hình**: News Feed = Neo4j (bạn bè) → MongoDB (`$in` bài viết); Gợi ý kết bạn = Cypher friend-of-friend + hồ sơ/số bài từ MongoDB.
 3. **Đồng bộ liên CSDL**: tạo user dual-write MongoDB → Neo4j theo mẫu **Saga + Outbox** ([sync.py](backend-python/app/services/sync.py)) — Neo4j chết thì rollback hoặc retry tự động.
-4. **Chịu lỗi nút**: đọc `secondaryPreferred` sống sót khi primary chết; Neo4j chết → website chuyển chế độ degraded, feed vẫn hoạt động.
+4. **Chịu lỗi nút**: mất 1 trong 3 máy PC1/PC2/PC3 vẫn đọc và ghi được (bầu primary mới, đọc `primaryPreferred`); Neo4j chết → website chuyển chế độ degraded, feed vẫn hoạt động. PC4 vẫn là điểm hỏng duy nhất. Số đo: [docs/EVALUATION.md](docs/EVALUATION.md).

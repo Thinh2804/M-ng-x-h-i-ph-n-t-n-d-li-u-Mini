@@ -76,7 +76,7 @@ if (!$me && $page !== 'login') {
     $page = 'login';
 }
 // Trang giám sát chỉ dành cho admin
-if ($page === 'admin' && (($me['role'] ?? '') !== 'admin')) {
+if (in_array($page, ['admin', 'sync'], true) && (($me['role'] ?? '') !== 'admin')) {
     $page = 'feed';
     $msg  = $msg ?? '❌ Chỉ tài khoản admin được xem trang giám sát cluster';
 }
@@ -96,6 +96,7 @@ switch ($page) {
     case 'communities':  require __DIR__ . '/../pages/communities.php'; break;
     case 'profile':      require __DIR__ . '/../pages/profile.php'; break;
     case 'admin':        require __DIR__ . '/../pages/admin.php'; break;
+    case 'sync':         require __DIR__ . '/../pages/sync.php'; break;
     default:             require __DIR__ . '/../pages/feed.php'; break;
 }
 ?>

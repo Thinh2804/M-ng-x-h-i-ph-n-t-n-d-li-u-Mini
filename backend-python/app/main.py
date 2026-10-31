@@ -2,8 +2,10 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from pymongo.errors import PyMongoError
 
 from .routers import users, posts, social, admin
 from .services import sync
@@ -25,6 +27,17 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
 )
+
+
+@app.exception_handler(PyMongoError)
+def mongo_unavailable(request: Request, exc: PyMongoError):
+    """Cụm MongoDB lỗi → trả 503 có thông báo rõ thay vì 500."""
+    logging.getLogger("api").warning("MongoDB lỗi tại %s: %s", request.url.path, exc)
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "MongoDB tạm thời không khả dụng, vui lòng thử lại sau"},
+    )
+
 
 app.include_router(users.router)
 app.include_router(posts.router)

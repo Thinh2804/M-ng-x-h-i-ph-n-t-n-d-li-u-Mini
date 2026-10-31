@@ -7,6 +7,7 @@ import statistics
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pymongo.errors import PyMongoError
+from neo4j.exceptions import Neo4jError, ServiceUnavailable
 
 from .. import database as dbx
 from ..services import sync
@@ -62,6 +63,44 @@ def shard_distribution():
         except PyMongoError as e:
             out[coll] = {"error": str(e)}
     return out
+
+
+@router.get("/sync-view")
+def sync_view():
+    """Đặt cạnh nhau dữ liệu từng user ở MongoDB và Neo4j, nối qua users._id = User.id."""
+    mongo = {
+        u["_id"]: u
+        for u in dbx.db.users.find({}, {"username": 1, "full_name": 1, "friend_count": 1})
+    }
+    posts = {
+        r["_id"]: r["n"]
+        for r in dbx.db.posts.aggregate([{"$group": {"_id": "$author_id", "n": {"$sum": 1}}}])
+    }
+    try:
+        with dbx.neo4j_driver.session() as s:
+            graph = {
+                r["id"]: r
+                for r in s.run(
+                    """MATCH (u:User) OPTIONAL MATCH (u)-[:FRIEND]->(f:User)
+                       RETURN u.id AS id, u.username AS username, u.full_name AS full_name,
+                              count(f) AS friends"""
+                ).data()
+            }
+    except (Neo4jError, ServiceUnavailable, OSError):
+        return {"neo4j_ok": False, "rows": [], "outbox_pending": _outbox_pending()}
+
+    rows = []
+    for uid in mongo.keys() | graph.keys():
+        m, g = mongo.get(uid), graph.get(uid)
+        synced = bool(m and g and m.get("username") == g["username"]
+                      and m.get("full_name", "") == g["full_name"]
+                      and m.get("friend_count", 0) == g["friends"])
+        rows.append({
+            "id": uid, "synced": synced, "mongo": m, "neo4j": g,
+            "posts": posts.get(uid, 0),
+        })
+    rows.sort(key=lambda r: (r["mongo"] or r["neo4j"])["username"])
+    return {"neo4j_ok": True, "rows": rows, "outbox_pending": _outbox_pending()}
 
 
 @router.post("/outbox/process")

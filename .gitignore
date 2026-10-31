@@ -1,0 +1,4 @@
+.env
+.local-4pc/
+.venv/
+__pycache__/

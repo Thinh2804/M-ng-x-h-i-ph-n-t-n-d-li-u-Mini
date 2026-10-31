@@ -11,6 +11,6 @@ Get-Content $envFile | Where-Object { $_ -match '^\s*[^#].*=' } | ForEach-Object
 
 New-Item -ItemType Directory -Force -Path C:\data\log | Out-Null
 
-Write-Host "==> Khoi dong mongos (cong 27017), configdb = cfgrs tren PC1..."
-mongos --configdb "cfgrs/$($env:PC1_IP):27019" --port 27017 --bind_ip_all `
+Write-Host "==> Khoi dong mongos (cong 27017), configdb = cfgrs tren PC1, PC2, PC3..."
+mongos --configdb "cfgrs/$($env:PC1_IP):27019,$($env:PC2_IP):27019,$($env:PC3_IP):27019" --port 27017 --bind_ip_all `
        --logpath C:\data\log\mongos.log --logappend

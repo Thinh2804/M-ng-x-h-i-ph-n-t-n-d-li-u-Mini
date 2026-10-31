@@ -1,6 +1,6 @@
 # Khởi tạo MongoDB Sharded Cluster - chạy trên PC4 (máy quản trị, đã cài mongosh).
 # Thứ tự trước đó: PC1 chạy start_configsvr.ps1, PC2/PC3 chạy start_shard*.ps1,
-# PC4 chạy start_mongos.ps1 (sau bước 1 bên dưới).
+# PC4 chạy start_replicas.ps1; PC4 chạy start_mongos.ps1 (sau bước 1 bên dưới).
 $ErrorActionPreference = "Stop"
 $envFile = Join-Path $PSScriptRoot "..\.env"
 Get-Content $envFile | Where-Object { $_ -match '^\s*[^#].*=' } | ForEach-Object {
@@ -12,7 +12,11 @@ Write-Host "==> 1. Khoi tao config replica set (cfgrs) tren PC1"
 mongosh --host $env:PC1_IP --port 27019 --eval @"
 rs.initiate({
   _id: 'cfgrs', configsvr: true,
-  members: [ { _id: 0, host: '$($env:PC1_IP):27019' } ]
+  members: [
+    { _id: 0, host: '$($env:PC1_IP):27019', priority: 2 },
+    { _id: 1, host: '$($env:PC2_IP):27019', priority: 1 },
+    { _id: 2, host: '$($env:PC3_IP):27019', priority: 1 }
+  ]
 })
 "@
 
@@ -22,7 +26,8 @@ rs.initiate({
   _id: 'rs1',
   members: [
     { _id: 0, host: '$($env:PC2_IP):27018', priority: 2 },
-    { _id: 1, host: '$($env:PC3_IP):27028', priority: 1 }
+    { _id: 1, host: '$($env:PC3_IP):27028', priority: 1 },
+    { _id: 2, host: '$($env:PC4_IP):27038', priority: 0 }
   ]
 })
 "@
@@ -33,14 +38,16 @@ rs.initiate({
   _id: 'rs2',
   members: [
     { _id: 0, host: '$($env:PC3_IP):27018', priority: 2 },
-    { _id: 1, host: '$($env:PC2_IP):27029', priority: 1 }
+    { _id: 1, host: '$($env:PC2_IP):27029', priority: 1 },
+    { _id: 2, host: '$($env:PC4_IP):27039', priority: 0 }
   ]
 })
 "@
 
 Write-Host "==> Cho 20s cho cac replica set bau primary..."
 Start-Sleep -Seconds 20
-Write-Host "==> NHO: khoi dong mongos tren PC4 (deploy\pc4-master\start_mongos.ps1) truoc buoc 4!"
+Write-Host "==> Mo cua so khac, chay mongos tren PC4 (deploy\pc4-master\start_mongos.ps1)."
+Read-Host "Nhan Enter khi mongos da chay"
 
 Write-Host "==> 4. Them shard + bat sharding cho DB 'social'"
 mongosh --host $env:PC4_IP --port 27017 --eval @"

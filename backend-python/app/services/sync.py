@@ -10,7 +10,7 @@ import logging
 import threading
 from datetime import datetime, timezone
 
-from pymongo.errors import PyMongoError
+from pymongo.errors import PyMongoError, WTimeoutError
 from neo4j.exceptions import Neo4jError, ServiceUnavailable
 
 from .. import database as dbx
@@ -33,7 +33,15 @@ def create_user_dual_write(username: str, full_name: str, avatar_url: str,
         "role": role, "friend_count": 0, "created_at": _now(),
     }
     # Bước 1: MongoDB (w=majority qua URI)
-    dbx.db.users.insert_one(doc)
+    try:
+        dbx.db.users.insert_one(doc)
+    except WTimeoutError as e:
+        # Đã ghi trên primary nhưng chưa đủ majority: bù lại để không sót user thiếu node Neo4j
+        try:
+            dbx.db.users.delete_one({"_id": user_id})
+        except PyMongoError:
+            log.warning("Không xóa được user %s khi bù trừ", user_id)
+        raise RuntimeError(f"MongoDB chưa đủ bản sao để xác nhận ghi: {e}") from e
 
     # Bước 2: Neo4j
     try:
@@ -61,11 +69,15 @@ def create_user_dual_write(username: str, full_name: str, avatar_url: str,
 def create_friendship_dual(from_user: str, to_user: str) -> dict:
     """Quan hệ bạn bè: nguồn sự thật là Neo4j; Mongo chỉ lưu đếm cache."""
     with dbx.neo4j_driver.session() as s:
-        s.run(
+        matched = s.run(
             """MATCH (a:User {id: $a}), (b:User {id: $b})
-               MERGE (a)-[:FRIEND]->(b) MERGE (b)-[:FRIEND]->(a)""",
+               MERGE (a)-[:FRIEND]->(b) MERGE (b)-[:FRIEND]->(a)
+               RETURN count(*) AS c""",
             a=from_user, b=to_user,
-        )
+        ).single()["c"]
+    if not matched:
+        # User chưa có node (không tồn tại hoặc còn chờ trong outbox)
+        raise LookupError("User chưa có trong Neo4j")
     # Cache số bạn vào Mongo (best-effort, không cần giao dịch)
     try:
         for uid in (from_user, to_user):

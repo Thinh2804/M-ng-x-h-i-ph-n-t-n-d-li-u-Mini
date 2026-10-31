@@ -8,10 +8,10 @@
 
 | Máy | Dịch vụ | Cổng |
 |-----|---------|------|
-| **PC1** | Config Server (`cfgrs`) | 27019 |
-| **PC2** | Shard 1 primary (`rs1`) + secondary rs2 | 27018, 27029 |
-| **PC3** | Shard 2 primary (`rs2`) + secondary rs1 | 27018, 27028 |
-| **PC4 (Master)** | `mongos` + Python API + PHP Web + Neo4j Desktop | 27017, 8000, 8080, 7687 |
+| **PC1** | Config Server (`cfgrs`, ưu tiên primary) | 27019 |
+| **PC2** | Shard 1 primary (`rs1`) + secondary rs2 + config server | 27018, 27029, 27019 |
+| **PC3** | Shard 2 primary (`rs2`) + secondary rs1 + config server | 27018, 27028, 27019 |
+| **PC4 (Master)** | `mongos` + Python API + PHP Web + Neo4j Desktop + bản sao thứ 3 của rs1, rs2 | 27017, 8000, 8080, 7687, 27038, 27039 |
 
 Luồng dữ liệu: **Trình duyệt → PHP (:8080) → Python API (:8000) → mongos (:27017) → Shard PC2/PC3** và **→ Neo4j (:7687)**.
 

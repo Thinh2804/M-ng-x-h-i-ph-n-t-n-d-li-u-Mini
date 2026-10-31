@@ -6,23 +6,29 @@ source "$(dirname "$0")/../.env"
 echo "==> 1. Khởi tạo config replica set (cfgrs) trên PC1"
 mongosh --host "$PC1_IP" --port 27019 --eval "
 rs.initiate({ _id: 'cfgrs', configsvr: true,
-  members: [ { _id: 0, host: '$PC1_IP:27019' } ] })"
+  members: [
+    { _id: 0, host: '$PC1_IP:27019', priority: 2 },
+    { _id: 1, host: '$PC2_IP:27019', priority: 1 },
+    { _id: 2, host: '$PC3_IP:27019', priority: 1 } ] })"
 
 echo "==> 2. Khởi tạo rs1 (Shard 1: primary PC2, secondary PC3)"
 mongosh --host "$PC2_IP" --port 27018 --eval "
 rs.initiate({ _id: 'rs1', members: [
   { _id: 0, host: '$PC2_IP:27018', priority: 2 },
-  { _id: 1, host: '$PC3_IP:27028', priority: 1 } ] })"
+  { _id: 1, host: '$PC3_IP:27028', priority: 1 },
+  { _id: 2, host: '$PC4_IP:27038', priority: 0 } ] })"
 
 echo "==> 3. Khởi tạo rs2 (Shard 2: primary PC3, secondary PC2)"
 mongosh --host "$PC3_IP" --port 27018 --eval "
 rs.initiate({ _id: 'rs2', members: [
   { _id: 0, host: '$PC3_IP:27018', priority: 2 },
-  { _id: 1, host: '$PC2_IP:27029', priority: 1 } ] })"
+  { _id: 1, host: '$PC2_IP:27029', priority: 1 },
+  { _id: 2, host: '$PC4_IP:27039', priority: 0 } ] })"
 
 echo "==> Chờ 20s cho các replica set bầu primary..."
 sleep 20
-echo "==> NHỚ: khởi động mongos trên PC4 trước bước 4!"
+echo "==> Mở cửa sổ khác, chạy mongos trên PC4."
+read -r -p "Nhấn Enter khi mongos đã chạy" _
 
 echo "==> 4. Thêm shard + bật sharding cho DB 'social'"
 mongosh --host "$PC4_IP" --port 27017 --eval "

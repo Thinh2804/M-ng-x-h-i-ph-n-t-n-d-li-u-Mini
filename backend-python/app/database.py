@@ -13,7 +13,10 @@ mongo_client = MongoClient(
     serverSelectionTimeoutMS=config.MONGO_TIMEOUT_MS,
     connectTimeoutMS=config.MONGO_TIMEOUT_MS,
 )
-db = mongo_client[config.DB_NAME]
+# primaryPreferred: bình thường đọc primary (dữ liệu mới nhất), primary mất thì đọc secondary
+db = mongo_client.get_database(
+    config.DB_NAME, read_preference=ReadPreference.PRIMARY_PREFERRED
+)
 
 # Handle đọc từ secondary - minh họa đọc khi primary chết
 db_secondary = mongo_client.get_database(
