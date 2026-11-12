@@ -1,60 +1,83 @@
-# MiniSocial – PHP Web Frontend & Admin
+# UniConnect – PHP Frontend (mini_social_php)
 
-Frontend PHP theo phân công Frontend Developer, tích hợp Python FastAPI và bám SRS Mạng xã hội Mini (MongoDB Sharded Cluster + Neo4j).
+Giao diện PHP responsive cho Mini Social Network theo phạm vi Frontend Developer trong SRS: đăng nhập/đăng ký, News Feed, Profile, Friends/FoF và Admin Dashboard.
 
-## 1. Cấu trúc
+## 1. Công nghệ và kiến trúc
+- PHP 8.1+ (khuyến nghị PHP 8.2+), HTML5, CSS3, JavaScript thuần.
+- PHP gọi Python FastAPI qua HTTP/cURL. PHP không kết nối trực tiếp MongoDB hoặc Neo4j.
+- Mặc định FastAPI: `http://127.0.0.1:8000`; PHP web server: `http://127.0.0.1:8080`.
+- Header `X-User-Id` được gửi khi đã đăng nhập. Nếu Backend trả access token, PHP cũng gửi Bearer token.
 
-- `public/login.php`, `register.php`: đăng nhập/đăng ký.
-- `public/feed.php`: News Feed, đăng bài, Like, bình luận.
-- `public/profile.php`: hồ sơ và bài viết cá nhân.
-- `public/friends.php`: bạn bè và gợi ý FoF.
-- `public/admin.php`: Health Check, trạng thái MongoDB/Neo4j, Shard, Outbox.
-- `app/bootstrap.php`: session, kiểm tra quyền, hàm gọi API tập trung.
-- `config.php`: cấu hình URL FastAPI.
+## 2. Cấu trúc
+```
+mini_social_php/
+├── config.php
+├── README.md
+├── app/
+│   ├── api_client.php
+│   ├── bootstrap.php
+│   └── layout.php
+└── public/
+    ├── index.php
+    ├── login.php
+    ├── register.php
+    ├── logout.php
+    ├── feed.php
+    ├── profile.php
+    ├── friends.php
+    ├── admin.php
+    ├── action.php
+    └── assets/{css/style.css,js/app.js}
+```
 
-## 2. Chạy thử trên PC4 (Windows)
+## 3. Chạy trên Windows 11
+1. Trên máy chạy cụm giả lập: `deploy\start_local.ps1` đã tự chạy frontend này ở cổng 8080. Chạy tay thì làm tiếp các bước dưới tại thư mục `mini_social_php`.
+2. Bật extension cURL và mbstring trong `php.ini` (`extension=curl`, `extension=mbstring`).
+3. Mở PowerShell tại thư mục dự án:
+   ```powershell
+   php -S 0.0.0.0:8080 -t public
+   ```
+4. Mở `http://127.0.0.1:8080`.
+5. Đảm bảo FastAPI đang chạy trên PC4 cổng 8000. Nếu PHP và FastAPI khác máy, sửa `base_url` trong `config.php` (hoặc đặt biến môi trường `API_BASE_URL`) thành IP LAN của PC chạy FastAPI.
 
-1. Cài PHP 8+ và bật extension `curl` trong `php.ini`.
-2. Giải nén thư mục dự án, mở terminal tại thư mục `mini_social_php`.
-3. Chạy: `php -S 0.0.0.0:8080 -t public`
-4. Mở `http://localhost:8080` hoặc `http://IP_PC4:8080` từ máy trong LAN.
-5. Sửa `API_BASE_URL` trong `config.php` thành địa chỉ FastAPI thực tế, ví dụ `http://192.168.1.104:8000`.
+## 4. API contract (khớp backend-python/app/routers)
+Mọi route gom tại `config.php`. `{user_id}` mặc định là user đang đăng nhập; mọi request gửi kèm `X-User-Id`.
 
-Nếu PHP và FastAPI chạy cùng PC4, `127.0.0.1:8000` là phù hợp. Trình duyệt người dùng không gọi trực tiếp FastAPI; PHP gọi backend bằng cURL nên tránh vấn đề CORS ở phía trình duyệt.
+| Key | Method | Path | Dùng ở |
+|---|---|---|---|
+| register | POST | `/users` `{username, password, full_name}` | register.php |
+| login | POST | `/users/login` → user (`_id`, `role`…) | login.php |
+| users | GET | `/users?limit=1000` | tra tên bạn bè, người bình luận |
+| profile | GET | `/users/{user_id}` | profile.php |
+| user_posts | GET | `/posts/by-author/{user_id}` (targeted, 1 shard) | profile.php |
+| feed | GET | `/social/feed/{user_id}` → `{degraded, friend_count, posts}` | feed.php |
+| search | GET | `/posts/search?q=` (scatter-gather) | ô tìm kiếm → feed.php?q= |
+| posts | POST | `/posts` `{author_id, content, image_urls}` | action.php |
+| like | POST | `/posts/{post_id}/like` | action.php |
+| post | GET | `/posts/{post_id}` | post.php |
+| post_view | POST | `/posts/{post_id}/view` (ghi nhận đã xem → sở thích) | post.php |
+| post_comments | GET | `/posts/{post_id}/comments` | feed.php |
+| comments | POST | `/posts/comments` `{post_id, author_id, content}` | action.php |
+| friends | GET | `/social/friends/{user_id}` → `{friends: [id…]}` | friends.php, profile.php |
+| friend_add | POST | `/social/friends` `{from_user, to_user}` | action.php |
+| suggestions | GET | `/social/suggestions/{user_id}` → `{suggestions}` | friends.php |
+| health | GET | `/admin/health` (chỉ admin) | admin.php |
+| shards | GET | `/admin/shard-distribution` (chỉ admin) | admin.php |
+| outbox_process | POST | `/admin/outbox/process` (chỉ admin) | admin.php |
 
-## 3. API contract frontend đang sử dụng
+**Gợi ý kết bạn theo nội dung:** đăng / mở xem (post.php) / thích / bình luận một bài sẽ ghi từ khóa của bài thành `(:User)-[:INTERESTED_IN]->(:Keyword)` trên Neo4j, và nối `(:User)-[:CONTENT_MATCH]-(:User)` với tác giả bài đó (hoặc 5 người khớp nhất khi tự đăng bài). Vì vậy user mới chưa có bạn vẫn có gợi ý, và người bị khớp cũng thấy user mới ở đầu danh sách gợi ý của họ. Dữ liệu cũ: chạy `python scripts/backfill_interests.py` một lần.
 
-SRS mô tả chức năng và cổng FastAPI `8000`, nhưng chưa quy định URL endpoint và JSON response cụ thể. Frontend tạm thống nhất quy ước REST dưới đây; cần đối chiếu/đồng bộ với backend trước khi nghiệm thu:
+Khi feed/gợi ý trả `degraded: true` (Neo4j không khả dụng), giao diện hiện cảnh báo và chỉ hiển thị dữ liệu MongoDB còn lấy được.
 
-| Method | Endpoint | Payload / mục đích |
-|---|---|---|
-| POST | `/api/v1/auth/register` | `username`, `password`, `full_name` |
-| POST | `/api/v1/auth/login` | `username`, `password`; response có `user` |
-| GET | `/api/v1/feed` | response `posts` |
-| POST | `/api/v1/posts` | `content`, `image_urls` |
-| POST | `/api/v1/posts/{post_id}/like` | tăng likes |
-| POST | `/api/v1/posts/{post_id}/comments` | `content` |
-| GET | `/api/v1/users/{user_id}` | `user`, `posts` |
-| GET | `/api/v1/friends` | `friends` |
-| GET | `/api/v1/friends/suggestions` | `suggestions`, số `mutual_friends` |
-| POST | `/api/v1/friends` | `target_user_id` |
-| GET | `/api/v1/admin/health` | sức khỏe hệ thống |
-| GET | `/api/v1/admin/shards` | `shards` |
-| GET | `/api/v1/admin/outbox` | `pending`, `done`, `failed` |
+## 5. Quy ước dữ liệu
+Frontend giữ nguyên tên trường SRS như `user_id`, `author_id`, `post_id`, `friend_count`, `image_urls`, `created_at`, `outbox`. Phần mapping response linh hoạt ở mức đọc các alias phổ biến, không đổi schema lưu trữ Backend.
 
-Tất cả request sau đăng nhập gửi header `X-User-Id` đúng theo SRS. Các API admin chỉ được gọi khi session có `role=admin`; backend vẫn phải tự xác minh role và trả 401/403, không được tin vào kiểm tra giao diện PHP.
+## 6. Mã lỗi
+- 401: phiên đăng nhập không hợp lệ/hết hạn.
+- 403: không đủ quyền.
+- 503 hoặc không kết nối được: Backend chưa sẵn sàng.
 
-## 4. Quy tắc tên
-
-- PHP file: `snake_case.php`; PHP variables: `$snake_case`; PHP functions: `camelCase()`.
-- JavaScript variables/functions: `camelCase`.
-- CSS class: `kebab-case`.
-- MongoDB field/collection: giữ đúng SRS (`author_id`, `friend_count`, `image_urls`, `created_at`, `users`, `posts`, `comments`, `outbox`).
-- Graph model: `User`, `FRIEND`.
-
-## 5. Điểm cần hoàn thiện trước triển khai thật
-
-- SRS dùng `X-User-Id`; đây là cơ chế nhận diện theo tài liệu nhưng không đủ an toàn nếu client có thể tự giả mạo header. Nên bổ sung access token/session ký số hoặc xác thực cookie phía backend; FastAPI phải kiểm tra quyền ở mọi endpoint.
-- Nên dùng HTTPS, CSRF token cho form, giới hạn tần suất đăng nhập/đăng bài và kiểm tra URL ảnh ở backend.
-- Đảm bảo response API thống nhất với contract ở mục 3; nếu backend đang dùng đường dẫn khác, chỉ cần sửa endpoint trong các file PHP tương ứng hoặc tạo lớp mapping tập trung.
-- Các thông tin trạng thái Shard/Outbox phụ thuộc dữ liệu backend trả về; dashboard có fallback “Chưa rõ/—” khi trường chưa có.
+## 7. Giới hạn hiện tại
+- Form đăng bài hiện gửi nội dung văn bản và `image_urls: []`; upload ảnh cần Backend cung cấp endpoint upload hoặc quy định URL ảnh.
+- Chia sẻ, thông báo và phân trang chưa có API được mô tả đầy đủ trong SRS nên chưa giả lập hành vi ghi dữ liệu.
+- Dashboard chỉ hiển thị trạng thái Backend trả về; không tự tạo số liệu giả khi Cluster/Outbox chưa phản hồi.

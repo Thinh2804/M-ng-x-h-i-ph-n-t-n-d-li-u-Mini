@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend-python"))
 
 from app import database as dbx  # noqa: E402
 from app.routers.users import hash_password  # noqa: E402
+from app.services import interests  # noqa: E402
 
 N_USERS = int(sys.argv[1]) if len(sys.argv) > 1 else 30
 POSTS_PER_USER = int(sys.argv[2]) if len(sys.argv) > 2 else 20
@@ -115,6 +116,10 @@ def main():
                       id=uid).single()["c"]
             dbx.db.users.update_one({"_id": uid}, {"$set": {"friend_count": c}})
     print(f"  ✔ ~{edges} quan hệ bạn bè (Neo4j)")
+
+    # 4. Sở thích theo nội dung bài viết - gợi ý kết bạn cho user chưa có bạn chung
+    r = interests.rebuild_from_posts()
+    print(f"  ✔ {r['keywords']} từ khóa, {r['edges']} cạnh INTERESTED_IN (Neo4j)")
     print("HOÀN TẤT. Mở web PHP hoặc chạy benchmark/benchmark.py")
 
 

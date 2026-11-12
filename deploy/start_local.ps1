@@ -16,8 +16,13 @@ Write-Host "==> Khoi dong Python API (FastAPI) tren cong 8000..."
 Start-Process powershell -ArgumentList "-NoExit", "-Command",
     "cd '$root\backend-python'; .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000"
 
-Write-Host "==> Khoi dong PHP web tren cong 8080..."
+Write-Host "==> Khoi dong web PHP (mini_social_php - UniConnect) tren cong 8080..."
 Start-Process powershell -ArgumentList "-NoExit", "-Command",
-    "cd '$root\backend-php'; & '$php' -d extension_dir='$phpExt' -d extension=curl -S 127.0.0.1:8080 -t public"
+    "cd '$root\mini_social_php'; & '$php' -d extension_dir='$phpExt' -d extension=curl -d extension=mbstring -S 127.0.0.1:8080 -t public"
 
-Write-Host "==> Xong. Web: http://localhost:8080 | API docs: http://localhost:8000/docs"
+# Giao dien cu: giu lai cac trang Dong bo / Cong dong / Benchmark cho bao cao
+Write-Host "==> Khoi dong web PHP cu (backend-php) tren cong 8081..."
+Start-Process powershell -ArgumentList "-NoExit", "-Command",
+    "cd '$root\backend-php'; & '$php' -d extension_dir='$phpExt' -d extension=curl -S 127.0.0.1:8081 -t public"
+
+Write-Host "==> Xong. Web: http://localhost:8080 | Web cu: http://localhost:8081 | API docs: http://localhost:8000/docs"

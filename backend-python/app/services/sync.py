@@ -103,6 +103,11 @@ def process_outbox_once() -> int:
                         "MERGE (u:User {id: $id}) SET u.username = $username, u.full_name = $fn",
                         id=p["id"], username=p["username"], fn=p.get("full_name", ""),
                     )
+            elif item["type"] == "record_interest":
+                from .interests import write_interest
+                p = item["payload"]
+                write_interest(p["user_id"], p["keywords"], p["weight"],
+                               p.get("target_id"), p.get("find_matches", False))
             dbx.db.outbox.update_one(
                 {"_id": item["_id"]},
                 {"$set": {"status": "done", "done_at": _now()}},

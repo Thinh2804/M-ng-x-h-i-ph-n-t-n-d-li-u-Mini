@@ -1,6 +1,63 @@
-<?php require_once __DIR__.'/../app/bootstrap.php'; requireAdmin(); $pageTitle='Admin Dashboard'; $health=apiRequest('GET','/api/v1/admin/health'); $shards=apiRequest('GET','/api/v1/admin/shards'); $outbox=apiRequest('GET','/api/v1/admin/outbox'); $h=$health['data']??[]; $s=$shards['data']['shards']??$shards['data']??[]; $o=$outbox['data']??[]; require __DIR__.'/../app/header.php'; ?>
-<div class="admin-intro"><div><span class="mini-label">SYSTEM CONTROL CENTER</span><h2>Giám sát sức khỏe hệ thống</h2><p>Theo dõi MongoDB Sharded Cluster, Neo4j và hàng đợi đồng bộ Outbox.</p></div><button class="btn secondary" onclick="location.reload()">↻ Làm mới</button></div>
-<div class="metric-grid"><div class="metric-card card"><span>API / Backend</span><strong class="<?=($health['ok']?'good':'bad')?>"><?=($health['ok']?'Hoạt động':'Không kết nối')?></strong><small>FastAPI · :8000</small></div><div class="metric-card card"><span>MongoDB Cluster</span><strong><?=e($h['mongodb']??$h['mongo_status']??'Chưa rõ')?></strong><small>Config Server + Shards</small></div><div class="metric-card card"><span>Neo4j</span><strong><?=e($h['neo4j']??$h['neo4j_status']??'Chưa rõ')?></strong><small>Graph Database · :7687</small></div><div class="metric-card card"><span>Outbox Pending</span><strong><?=e($o['pending']??$o['pending_count']??'—')?></strong><small>Đang chờ đồng bộ</small></div></div>
-<div class="admin-grid"><section class="card panel"><div class="panel-heading"><div><span class="mini-label">MONGODB</span><h3>Phân bố Shard</h3></div><span class="status-pill">Cluster</span></div><?php if(!$shards['ok']): ?><div class="inline-error"><?=e($shards['message'])?></div><?php elseif(!$s): ?><div class="empty-state compact">Backend chưa trả về thông tin Shard.</div><?php else: ?><div class="table-wrap"><table><thead><tr><th>Shard</th><th>Trạng thái</th><th>Vai trò</th><th>Dữ liệu</th></tr></thead><tbody><?php foreach($s as $shard): ?><tr><td><strong><?=e($shard['name']??$shard['shard']??'—')?></strong></td><td><?=e($shard['status']??'—')?></td><td><?=e($shard['role']??'—')?></td><td><?=e($shard['data_size']??$shard['size']??'—')?></td></tr><?php endforeach; ?></tbody></table></div><?php endif; ?></section>
-<section class="card panel"><div class="panel-heading"><div><span class="mini-label">OUTBOX PATTERN</span><h3>Hàng đợi đồng bộ</h3></div></div><div class="outbox-numbers"><div><strong><?=e($o['pending']??$o['pending_count']??0)?></strong><span>Pending</span></div><div><strong><?=e($o['done']??$o['done_count']??0)?></strong><span>Done</span></div><div><strong><?=e($o['failed']??$o['failed_count']??0)?></strong><span>Failed</span></div></div><p class="muted">Worker thực hiện retry các sự kiện pending khi Neo4j phục hồi.</p><?php if(!$outbox['ok']): ?><div class="inline-error"><?=e($outbox['message'])?></div><?php endif; ?></section></div>
-<div class="card panel raw-panel"><div class="panel-heading"><div><span class="mini-label">HEALTH CHECK</span><h3>Phản hồi giám sát</h3></div></div><pre><?=e(json_encode(['health'=>$h,'shards'=>$s,'outbox'=>$o],JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE) ?: '{}')?></pre></div><?php require __DIR__.'/../app/footer.php'; ?>
+<?php
+require_once __DIR__ . '/../app/bootstrap.php';
+require_once __DIR__ . '/../app/layout.php';
+requireAdmin();
+
+$h = api('GET', apiPath('health'));
+$d = api('GET', apiPath('shards'));
+$health = $h['ok'] && is_array($h['data']) ? $h['data'] : [];
+$dist = $d['ok'] && is_array($d['data']) ? $d['data'] : [];
+$shards = $health['shards']['shards'] ?? [];
+$mongoOk = !empty($health['mongo_cluster']);
+$neoOk = !empty($health['neo4j']);
+$pending = $health['outbox_pending'] ?? null;
+$collections = ['posts' => 'Bài viết', 'comments' => 'Bình luận', 'users' => 'Người dùng'];
+
+renderHeader('Giám sát hệ thống', 'admin');
+?>
+<div class="page-heading"><div><div class="eyebrow">ADMIN CONTROL CENTER</div><h1>Giám sát hệ thống</h1><p class="muted">Theo dõi sức khỏe dịch vụ và tình trạng dữ liệu phân tán.</p></div><a class="btn btn-soft" href="admin.php">↻ Làm mới</a></div>
+<?php if (!$h['ok'] || !$d['ok']): ?>
+  <div class="backend-notice"><span class="notice-icon">!</span><div><strong>Chưa lấy đủ dữ liệu giám sát</strong><p><?= e(apiMessage($h['ok'] ? $d : $h, 'Kiểm tra các API Admin trong FastAPI.')) ?></p></div></div>
+<?php endif; ?>
+
+<div class="admin-summary">
+  <article class="metric-card card"><div class="metric-top"><span>MONGODB CLUSTER</span><span class="metric-icon">⌁</span></div><strong class="metric-value"><?= $mongoOk ? 'Hoạt động' : 'Mất kết nối' ?></strong><span class="metric-foot"><i class="status-dot <?= $mongoOk ? 'online' : 'offline' ?>"></i>mongos (PC4)</span></article>
+  <article class="metric-card card"><div class="metric-top"><span>MONGODB SHARDS</span><span class="metric-icon">▤</span></div><strong class="metric-value"><?= count($shards) ?></strong><span class="metric-foot">Shard trong cluster</span></article>
+  <article class="metric-card card"><div class="metric-top"><span>OUTBOX PENDING</span><span class="metric-icon">◷</span></div><strong class="metric-value"><?= e($pending === null || $pending < 0 ? '—' : $pending) ?></strong><span class="metric-foot">Sự kiện chờ đồng bộ sang Neo4j</span></article>
+  <article class="metric-card card"><div class="metric-top"><span>NEO4J</span><span class="metric-icon">⌘</span></div><strong class="metric-value"><?= $h['ok'] ? ($neoOk ? 'Hoạt động' : 'Mất kết nối') : '—' ?></strong><span class="metric-foot"><i class="status-dot <?= $neoOk ? 'online' : 'offline' ?>"></i>Graph database (PC4)</span></article>
+</div>
+
+<div class="admin-grid">
+  <section class="card admin-panel">
+    <div class="panel-heading"><div><h2>MongoDB Sharded Cluster</h2><p class="muted">Số document mỗi shard đang giữ</p></div><span class="panel-tag">DATABASE</span></div>
+    <div class="shard-list">
+      <?php foreach ($shards as $shard):
+          $sid = $shard['id'] ?? 'shard';
+          $ok = (int)($shard['state'] ?? 0) === 1;
+          $parts = [];
+          foreach ($collections as $coll => $label) $parts[] = $label . ': ' . ($dist[$coll]['per_shard'][$sid] ?? 0);
+      ?>
+      <div class="shard-row"><span class="shard-symbol">▤</span><div class="shard-info"><strong><?= e($sid) ?></strong><small><?= e($shard['host'] ?? '') ?></small><small><?= e(implode(' · ', $parts)) ?></small></div><span class="status-label <?= $ok ? 'good' : 'neutral' ?>"><?= $ok ? 'Healthy' : 'Unknown' ?></span></div>
+      <?php endforeach; ?>
+      <?php if (!$shards): ?><div class="list-empty">Chưa có dữ liệu Shard từ API.</div><?php endif; ?>
+    </div>
+  </section>
+  <section class="card admin-panel">
+    <div class="panel-heading"><div><h2>Phân bố dữ liệu</h2><p class="muted">Tổng document và tỷ lệ trên từng shard</p></div><span class="panel-tag">SHARDING</span></div>
+    <div class="outbox-numbers">
+      <?php foreach ($collections as $coll => $label): ?>
+        <div><strong><?= e($dist[$coll]['total'] ?? '—') ?></strong><span><?= e($label) ?></span></div>
+      <?php endforeach; ?>
+    </div>
+    <?php foreach ($collections as $coll => $label): $total = max(1, (int)($dist[$coll]['total'] ?? 0)); $per = $dist[$coll]['per_shard'] ?? []; ksort($per); // cùng thứ tự → cùng màu cho mỗi shard ?>
+      <div class="dist-row"><span><?= e($label) ?></span><div class="dist-bar">
+        <?php $i = 0; foreach ($per as $sid => $n): ?>
+          <i class="seg-<?= $i++ % 2 ?>" style="width:<?= round($n * 100 / $total, 1) ?>%" title="<?= e("$sid: $n") ?>"><?= e("$sid " . round($n * 100 / $total) . '%') ?></i>
+        <?php endforeach; ?>
+      </div></div>
+    <?php endforeach; ?>
+    <form method="post" action="action.php" class="outbox-note"><span>Outbox: <?= e($pending ?? '—') ?> sự kiện chờ đồng bộ MongoDB → Neo4j.</span> <button class="btn btn-soft" name="action" value="process_outbox">Xử lý outbox</button></form>
+  </section>
+</div>
+<section class="card health-detail"><div class="panel-heading"><div><h2>Health Check chi tiết</h2><p class="muted">Phản hồi của GET /admin/health</p></div><span class="panel-tag">LIVE STATUS</span></div><pre><?= e(json_encode($health, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{}') ?></pre></section>
+<?php renderFooter(); ?>

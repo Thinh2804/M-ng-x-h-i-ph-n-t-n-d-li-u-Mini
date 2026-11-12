@@ -3,6 +3,7 @@ from pymongo.errors import PyMongoError
 from neo4j.exceptions import Neo4jError, ServiceUnavailable
 
 from .. import database as dbx
+from . import interests
 
 GRAPH_DOWN = {"degraded": True, "reason": "Neo4j không khả dụng"}
 
@@ -40,7 +41,10 @@ def news_feed(user_id: str, limit: int = 20) -> dict:
 
 
 def suggest_friends(user_id: str, limit: int = 10) -> dict:
-    """Gợi ý kết bạn: friend-of-friend (Neo4j) + làm giàu hồ sơ (MongoDB)."""
+    """Gợi ý kết bạn = bạn của bạn bè + người cùng chủ đề quan tâm (Neo4j), làm giàu hồ sơ (MongoDB).
+
+    User mới chưa có bạn vẫn có gợi ý nhờ phần chủ đề: đăng/xem/thích/bình luận bài viết.
+    """
     try:
         with dbx.neo4j_driver.session() as s:
             res = s.run(
@@ -50,9 +54,25 @@ def suggest_friends(user_id: str, limit: int = 10) -> dict:
                    ORDER BY mutual DESC LIMIT $limit""",
                 id=user_id, limit=limit,
             )
-            cands = [{"user_id": r["id"], "mutual_friends": r["mutual"]} for r in res]
+            fof = {r["id"]: r["mutual"] for r in res}
+        similar = {s["user_id"]: s for s in interests.similar_users(user_id, limit)}
     except (Neo4jError, ServiceUnavailable, OSError):
         return {**GRAPH_DOWN, "suggestions": []}
+
+    cands = []
+    for uid in fof.keys() | similar.keys():
+        sim = similar.get(uid, {})
+        cands.append({
+            "user_id": uid,
+            "mutual_friends": fof.get(uid, 0),
+            "interest_score": sim.get("interest_score", 0),
+            "common_topics": sim.get("common_topics", []),
+            "content_match": sim.get("content_match", False),
+            "reason": "both" if uid in fof and sim else ("friends" if uid in fof else "interests"),
+        })
+    # Trùng nội dung trực tiếp xếp trước; sau đó bạn chung + độ trùng chủ đề (đã chuẩn hóa 0-5)
+    cands.sort(key=lambda c: (c["content_match"], c["mutual_friends"] + c["interest_score"]), reverse=True)
+    cands = cands[:limit]
 
     ids = [c["user_id"] for c in cands]
     try:

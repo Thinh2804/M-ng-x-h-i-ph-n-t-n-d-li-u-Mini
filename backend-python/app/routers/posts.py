@@ -2,10 +2,11 @@
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException
 from pymongo.errors import PyMongoError
 
 from ..models import PostCreate, CommentCreate
+from ..services import interests
 from .. import database as dbx
 
 router = APIRouter(prefix="/posts", tags=["posts"])
@@ -25,6 +26,8 @@ def create_post(body: PostCreate):
         dbx.db.posts.insert_one(doc)  # mongos định tuyến tới shard theo hash(author_id)
     except PyMongoError as e:
         raise HTTPException(503, f"MongoDB cluster lỗi: {e}")
+    # Chủ đề bài viết → sở thích của tác giả (Neo4j) để gợi ý kết bạn theo nội dung
+    interests.record_interest(body.author_id, body.content, interests.WEIGHT_POST, "post")
     return doc
 
 
@@ -44,11 +47,37 @@ def search_posts(q: str, limit: int = 20):
     )
 
 
-@router.post("/{post_id}/like")
-def like_post(post_id: str):
-    r = dbx.db.posts.update_one({"_id": post_id}, {"$inc": {"likes": 1}})
-    if not r.matched_count:
+def _get_post(post_id: str) -> dict:
+    p = dbx.db.posts.find_one({"_id": post_id})  # không có shard key → scatter-gather
+    if not p:
         raise HTTPException(404, "Không tìm thấy bài viết")
+    return p
+
+
+@router.get("/{post_id}")
+def get_post(post_id: str):
+    return _get_post(post_id)
+
+
+@router.post("/{post_id}/view")
+def view_post(post_id: str, x_user_id: str | None = Header(default=None)):
+    """User mở xem bài → ghi nhận quan tâm tới chủ đề của bài."""
+    p = _get_post(post_id)
+    if x_user_id and x_user_id != p["author_id"]:
+        kws = interests.record_interest(x_user_id, p.get("content", ""), interests.WEIGHT_VIEW, "view",
+                                         target_id=p["author_id"])
+        return {"status": "ok", "keywords": kws}
+    return {"status": "ok", "keywords": []}
+
+
+@router.post("/{post_id}/like")
+def like_post(post_id: str, x_user_id: str | None = Header(default=None)):
+    p = dbx.db.posts.find_one_and_update({"_id": post_id}, {"$inc": {"likes": 1}})
+    if not p:
+        raise HTTPException(404, "Không tìm thấy bài viết")
+    if x_user_id and x_user_id != p["author_id"]:
+        interests.record_interest(x_user_id, p.get("content", ""), interests.WEIGHT_LIKE, "like",
+                                  target_id=p["author_id"])
     return {"status": "ok"}
 
 
@@ -62,6 +91,10 @@ def create_comment(body: CommentCreate):
         "created_at": datetime.now(timezone.utc),
     }
     dbx.db.comments.insert_one(doc)
+    post = dbx.db.posts.find_one({"_id": body.post_id}, {"author_id": 1, "content": 1})
+    if post and post["author_id"] != body.author_id:
+        interests.record_interest(body.author_id, post.get("content", ""), interests.WEIGHT_COMMENT, "comment",
+                                  target_id=post["author_id"])
     return doc
 
 
