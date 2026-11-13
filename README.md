@@ -83,7 +83,7 @@ Web: `http://localhost:8080` — tài khoản mẫu `user000` / `123456`, quản
 ### Giai đoạn 1 – Cấu hình mạng (tất cả các máy)
 - Kết nối cùng mạng LAN, đặt IP tĩnh (hoặc hostname ổn định).
 - Copy `.env.example` → `.env`, điền IP thật của 4 máy.
-- Mở firewall **chỉ trong mạng nội bộ** các cổng: `27017-27019, 27028, 27029, 27038, 27039, 7474, 7687, 8000, 8080`. Không mở MongoDB ra Internet.
+- Mở firewall **chỉ trong mạng nội bộ** các cổng: `27017-27019, 27028, 27029, 27038, 27039, 7474, 7687, 8000, 8080, 8081`. Không mở MongoDB ra Internet.
 - Kiểm tra liên lạc: `ping <IP máy khác>`.
 
 ### Giai đoạn 2 – Khởi động dịch vụ MongoDB trên từng máy
@@ -130,7 +130,7 @@ python benchmark\benchmark.py
 Đo: truy vấn targeted vs scatter-gather, đọc primary vs secondary, truy vấn liên mô hình, replication lag. Thí nghiệm mất kết nối nút: xem [docs/EVALUATION.md](docs/EVALUATION.md).
 
 ### Giai đoạn 8 – Viết báo cáo
-Dùng số liệu từ benchmark + ảnh chụp dashboard giám sát (`http://<PC4_IP>:8080/index.php?page=admin`) và `sh.status()` làm minh chứng.
+Dùng số liệu từ benchmark + ảnh chụp dashboard giám sát (`http://<PC4_IP>:8080/admin.php`; trang Đồng bộ/Benchmark ở giao diện cũ `http://<PC4_IP>:8081/index.php?page=admin`) và `sh.status()` làm minh chứng.
 
 ## Tính năng phân tán đã cài đặt
 

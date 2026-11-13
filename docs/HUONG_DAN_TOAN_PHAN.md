@@ -142,7 +142,7 @@ Hệ thống có **2 tầng** phân quyền:
 
 **Cơ chế hoạt động:**
 1. Đăng nhập `POST /users/login` → trả về document user có trường `role`.
-2. PHP lưu user vào `$_SESSION`, mọi request sang Python API tự gắn header `X-User-Id` (xem `backend-php/includes/api.php`).
+2. PHP lưu user vào `$_SESSION`, mọi request sang Python API tự gắn header `X-User-Id` (xem `mini_social_php/app/api_client.php`).
 3. FastAPI dependency `require_admin` (trong `backend-python/app/routers/admin.py`) đọc header, tra `users.role` trong MongoDB:
    - Thiếu header → **401**; user không tồn tại → **401**; role ≠ admin → **403**.
 4. Trang web: menu "⚙️ Giám sát" chỉ hiện với admin; truy cập thẳng URL cũng bị chặn trong `index.php`.

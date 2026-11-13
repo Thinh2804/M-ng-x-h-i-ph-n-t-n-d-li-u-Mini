@@ -23,7 +23,7 @@
 sh.status()                                    // chunk phân bố rs1/rs2
 db.posts.getShardDistribution()                // % documents mỗi shard
 ```
-Hoặc xem dashboard: `http://<PC4_IP>:8080/index.php?page=admin`.
+Hoặc xem dashboard: `http://<PC4_IP>:8080/admin.php` (giao diện cũ: `http://<PC4_IP>:8081/index.php?page=admin`).
 
 ## 3. Minh họa cơ chế sao chép / đồng bộ
 

@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from pymongo.errors import PyMongoError
 
 from .routers import users, posts, social, admin
-from .services import sync
+from .services import sync, interests
 
 logging.basicConfig(level=logging.INFO)
 
@@ -16,6 +16,10 @@ logging.basicConfig(level=logging.INFO)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     sync.start_outbox_worker(interval_s=10)
+    try:
+        interests.ensure_schema()
+    except Exception as e:  # Neo4j chưa lên: API vẫn chạy, ràng buộc tạo lần khởi động sau
+        logging.getLogger("main").warning("Chưa tạo được ràng buộc Keyword trên Neo4j: %s", e)
     yield
 
 
